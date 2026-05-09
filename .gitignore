@@ -1,0 +1,83 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.tfvars
+override.tf.json
+override.tf
+crash.log
+crash.*.log
+.terraformrc
+terraform.rc
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Ansible
+*.retry
+.ansible_vault_password
+
+# SSH keys
+*.pem
+*.key
+!example.pem
+
+# AWS
+.aws/credentials
+.aws/config
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.*.local

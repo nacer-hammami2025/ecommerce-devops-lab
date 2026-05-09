@@ -1,0 +1,126 @@
+---
+- name: Deploy E-Commerce Application
+  hosts: web
+  become: yes
+  gather_facts: yes
+
+  vars:
+    app_directory: /opt/ecommerce
+    app_port: 3000
+    node_version: 18
+
+  tasks:
+    - name: Wait for system to be ready
+      pause:
+        seconds: 30
+
+    - name: Update system packages
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      register: apt_update
+      until: apt_update is succeeded
+      retries: 3
+      delay: 10
+
+    - name: Install Docker
+      apt:
+        name:
+          - docker.io
+          - docker-compose
+        state: present
+      register: docker_install
+      until: docker_install is succeeded
+      retries: 3
+      delay: 10
+
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    - name: Enable and start Docker
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+
+    - name: Create application directory
+      file:
+        path: "{{ app_directory }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy application files
+      copy:
+        src: "{{ playbook_dir }}/files/"
+        dest: "{{ app_directory }}"
+        mode: '0755'
+
+    - name: Create docker-compose.yml
+      template:
+        src: "{{ playbook_dir }}/templates/docker-compose.yml.j2"
+        dest: "{{ app_directory }}/docker-compose.yml"
+        mode: '0644'
+
+    - name: Create nginx configuration
+      template:
+        src: "{{ playbook_dir }}/templates/nginx.conf.j2"
+        dest: "{{ app_directory }}/nginx.conf"
+        mode: '0644'
+
+    - name: Create Node.js app package.json
+      copy:
+        content: |
+          {
+            "name": "ecommerce-app",
+            "version": "1.0.0",
+            "main": "app.js",
+            "scripts": {
+              "start": "node app.js"
+            },
+            "dependencies": {
+              "express": "^4.18.2",
+              "mongodb": "^5.0.0",
+              "body-parser": "^1.20.2"
+            }
+          }
+        dest: "{{ app_directory }}/package.json"
+
+    - name: Start docker-compose services
+      shell: |
+        cd {{ app_directory }}
+        docker-compose up -d
+      register: docker_compose
+      retries: 3
+      delay: 10
+
+    - name: Verify services are running
+      shell: |
+        docker ps --format "{{.Names}}"
+      register: running_containers
+      retries: 5
+      delay: 10
+      until: running_containers.stdout_lines | length >= 3
+
+    - name: Display running containers
+      debug:
+        msg: "{{ running_containers.stdout_lines }}"
+
+    - name: Test Nginx connectivity
+      wait_for:
+        host: localhost
+        port: 80
+        timeout: 30
+        state: started
+
+    - name: Display app readiness status
+      debug:
+        msg: "E-Commerce application is ready and running on port {{ app_port }}"
+
+  handlers:
+    - name: Restart docker
+      systemd:
+        name: docker
+        state: restarted

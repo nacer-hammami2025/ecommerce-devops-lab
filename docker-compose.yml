@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:latest
+    container_name: nginx_dev
+    ports:
+      - "80:80"
+    volumes:
+      - ./ansible/templates/nginx.conf.j2:/etc/nginx/nginx.conf:ro
+      - ./app:/usr/share/nginx/html:ro
+    depends_on:
+      - app
+    networks:
+      - ecommerce-dev
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app_dev
+    working_dir: /app
+    command: npm start
+    volumes:
+      - ./app:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      MONGO_URL: "mongodb://mongodb:27017/ecommerce"
+    depends_on:
+      - mongodb
+    networks:
+      - ecommerce-dev
+
+  mongodb:
+    image: mongo:5.0-alpine
+    container_name: mongodb_dev
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_dev_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: ecommerce
+    networks:
+      - ecommerce-dev
+
+volumes:
+  mongo_dev_data:
+
+networks:
+  ecommerce-dev:
+    driver: bridge

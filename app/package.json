@@ -1,0 +1,19 @@
+{
+  "name": "ecommerce-app",
+  "version": "1.0.0",
+  "description": "E-Commerce application for DevOps Lab",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node --watch app.js",
+    "test": "node -e console.log('Tests passed')"
+  },
+  "keywords": ["ecommerce", "devops", "nodejs"],
+  "author": "ITeam University",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongodb": "^5.0.0",
+    "body-parser": "^1.20.2"
+  }
+}
