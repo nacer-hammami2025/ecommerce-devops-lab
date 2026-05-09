@@ -13,146 +13,44 @@ provider "aws" {
 }
 
 # ============================================
-# VPC & NETWORKING
+# NETWORKING
 # ============================================
-resource "aws_vpc" "main" {
-  cidr_block           = var.vpc_cidr
-  enable_dns_hostnames = true
-  enable_dns_support   = true
+data "aws_vpc" "default" {
+  default = true
+}
 
-  tags = {
-    Name        = "ecommerce-vpc"
-    Environment = "lab"
+data "aws_subnet" "default_az1" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+
+  filter {
+    name   = "availability-zone"
+    values = [data.aws_availability_zones.available.names[0]]
+  }
+
+  filter {
+    name   = "default-for-az"
+    values = ["true"]
   }
 }
 
-# Public Subnet AZ1
-resource "aws_subnet" "public_az1" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = var.public_subnet_az1_cidr
-  availability_zone       = data.aws_availability_zones.available.names[0]
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name = "public-subnet-az1"
-  }
-}
-
-# Public Subnet AZ2
-resource "aws_subnet" "public_az2" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = var.public_subnet_az2_cidr
-  availability_zone       = data.aws_availability_zones.available.names[1]
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name = "public-subnet-az2"
-  }
-}
-
-# Private Subnet AZ1
-resource "aws_subnet" "private_az1" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = var.private_subnet_az1_cidr
-  availability_zone = data.aws_availability_zones.available.names[0]
-
-  tags = {
-    Name = "private-subnet-az1"
-  }
-}
-
-# Private Subnet AZ2
-resource "aws_subnet" "private_az2" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = var.private_subnet_az2_cidr
-  availability_zone = data.aws_availability_zones.available.names[1]
-
-  tags = {
-    Name = "private-subnet-az2"
-  }
-}
-
-# Internet Gateway
-resource "aws_internet_gateway" "main" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "ecommerce-igw"
-  }
-}
-
-# NAT Gateway for Private Subnets
-resource "aws_eip" "nat" {
-  domain = "vpc"
-
-  tags = {
-    Name = "nat-eip"
+data "aws_subnet" "default_az2" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
   }
 
-  depends_on = [aws_internet_gateway.main]
-}
-
-resource "aws_nat_gateway" "main" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public_az1.id
-
-  tags = {
-    Name = "ecommerce-nat"
+  filter {
+    name   = "availability-zone"
+    values = [data.aws_availability_zones.available.names[1]]
   }
 
-  depends_on = [aws_internet_gateway.main]
-}
-
-# Route Table - Public
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.main.id
+  filter {
+    name   = "default-for-az"
+    values = ["true"]
   }
-
-  tags = {
-    Name = "public-rt"
-  }
-}
-
-# Route Table Association - Public AZ1
-resource "aws_route_table_association" "public_az1" {
-  subnet_id      = aws_subnet.public_az1.id
-  route_table_id = aws_route_table.public.id
-}
-
-# Route Table Association - Public AZ2
-resource "aws_route_table_association" "public_az2" {
-  subnet_id      = aws_subnet.public_az2.id
-  route_table_id = aws_route_table.public.id
-}
-
-# Route Table - Private
-resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main.id
-  }
-
-  tags = {
-    Name = "private-rt"
-  }
-}
-
-# Route Table Association - Private AZ1
-resource "aws_route_table_association" "private_az1" {
-  subnet_id      = aws_subnet.private_az1.id
-  route_table_id = aws_route_table.private.id
-}
-
-# Route Table Association - Private AZ2
-resource "aws_route_table_association" "private_az2" {
-  subnet_id      = aws_subnet.private_az2.id
-  route_table_id = aws_route_table.private.id
 }
 
 # ============================================
@@ -161,9 +59,9 @@ resource "aws_route_table_association" "private_az2" {
 
 # ALB Security Group
 resource "aws_security_group" "alb" {
-  name        = "alb-sg"
+  name_prefix = "alb-sg-"
   description = "Security group for ALB"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = data.aws_vpc.default.id
 
   ingress {
     from_port   = 80
@@ -193,9 +91,9 @@ resource "aws_security_group" "alb" {
 
 # EC2 Security Group
 resource "aws_security_group" "ec2" {
-  name        = "ec2-sg"
+  name_prefix = "ec2-sg-"
   description = "Security group for EC2 instances"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = data.aws_vpc.default.id
 
   # SSH
   ingress {
@@ -226,7 +124,7 @@ resource "aws_security_group" "ec2" {
     from_port   = 27017
     to_port     = 27017
     protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
+    cidr_blocks = [data.aws_vpc.default.cidr_block]
   }
 
   egress {
@@ -249,36 +147,36 @@ resource "aws_instance" "web1" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
   key_name               = var.key_pair_name
-  subnet_id              = aws_subnet.private_az1.id
+  subnet_id              = data.aws_subnet.default_az1.id
+  associate_public_ip_address = true
   vpc_security_group_ids = [aws_security_group.ec2.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
 
-  user_data = base64encode(file("${path.module}/user_data.sh"))
+  user_data = file("${path.module}/user_data.sh")
 
   tags = {
     Name = "web-instance-1"
     Role = "web"
   }
 
-  depends_on = [aws_nat_gateway.main]
 }
 
 resource "aws_instance" "web2" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
   key_name               = var.key_pair_name
-  subnet_id              = aws_subnet.private_az2.id
+  subnet_id              = data.aws_subnet.default_az2.id
+  associate_public_ip_address = true
   vpc_security_group_ids = [aws_security_group.ec2.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
 
-  user_data = base64encode(file("${path.module}/user_data.sh"))
+  user_data = file("${path.module}/user_data.sh")
 
   tags = {
     Name = "web-instance-2"
     Role = "web"
   }
 
-  depends_on = [aws_nat_gateway.main]
 }
 
 # ============================================
@@ -286,11 +184,11 @@ resource "aws_instance" "web2" {
 # ============================================
 
 resource "aws_lb" "main" {
-  name               = "ecommerce-alb"
+  name_prefix        = "alb-"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
-  subnets            = [aws_subnet.public_az1.id, aws_subnet.public_az2.id]
+  subnets            = [data.aws_subnet.default_az1.id, data.aws_subnet.default_az2.id]
 
   enable_deletion_protection = false
 
@@ -301,10 +199,10 @@ resource "aws_lb" "main" {
 
 # Target Group
 resource "aws_lb_target_group" "web" {
-  name        = "web-tg"
+  name_prefix = "tg-"
   port        = 80
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = data.aws_vpc.default.id
   target_type = "instance"
 
   health_check {
@@ -351,7 +249,7 @@ resource "aws_lb_listener" "web" {
 # ============================================
 
 resource "aws_iam_role" "ec2_role" {
-  name = "ec2-app-role"
+  name_prefix = "ec2-app-role-"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -389,7 +287,7 @@ resource "aws_iam_role_policy" "ec2_policy" {
 }
 
 resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "ec2-app-profile"
+  name_prefix = "ec2-app-profile-"
   role = aws_iam_role.ec2_role.name
 }
 

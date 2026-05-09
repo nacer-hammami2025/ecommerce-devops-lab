@@ -1,5 +1,5 @@
 output "vpc_id" {
-  value       = aws_vpc.main.id
+  value       = data.aws_vpc.default.id
   description = "VPC ID"
 }
 
@@ -10,10 +10,10 @@ output "alb_dns_name" {
 
 output "instance_public_ips" {
   value = [
-    aws_instance.web1.private_ip,
-    aws_instance.web2.private_ip
+    aws_instance.web1.public_ip,
+    aws_instance.web2.public_ip
   ]
-  description = "EC2 instance private IPs"
+  description = "EC2 instance public IPs"
 }
 
 output "instance_ids" {
