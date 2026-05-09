@@ -54,9 +54,9 @@
 
     - name: Copy application files
       copy:
-        src: "{{ playbook_dir }}/files/"
-        dest: "{{ app_directory }}"
-        mode: '0755'
+        src: "{{ playbook_dir }}/../app/app.js"
+        dest: "{{ app_directory }}/app.js"
+        mode: '0644'
 
     - name: Create docker-compose.yml
       template:
