@@ -81,7 +81,7 @@ jobs:
           echo "" >> inventory.ini
           for ip in $(echo "${{ needs.terraform.outputs.instance_ips }}" | tr ',' ' '); do
             if [ ! -z "$ip" ]; then
-              echo "$ip ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/ec2_key.pem ansible_python_interpreter=/usr/bin/python3" >> inventory.ini
+              echo "$ip ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/ec2_key.pem ansible_python_interpreter=/usr/bin/python3" >> inventory.ini
             fi
           done
           echo "" >> inventory.ini
@@ -91,7 +91,7 @@ jobs:
 
       - name: Run Ansible Playbook - Deploy
         run: |
-          ansible-playbook -i inventory.ini ../ansible/deploy.yml -v
+          ansible-playbook -i inventory.ini ansible/deploy.yml -v
         env:
           ANSIBLE_HOST_KEY_CHECKING: "False"
 
