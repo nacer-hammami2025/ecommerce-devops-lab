@@ -59,7 +59,7 @@ data "aws_subnet" "default_az2" {
 
 # ALB Security Group
 resource "aws_security_group" "alb" {
-  name = "ec2-alb-sg"
+  name = "ecommerce-alb-sg"
   description = "Security group for ALB"
   vpc_id      = data.aws_vpc.default.id
 
