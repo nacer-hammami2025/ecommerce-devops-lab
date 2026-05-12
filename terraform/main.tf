@@ -59,7 +59,7 @@ data "aws_subnet" "default_az2" {
 
 # ALB Security Group
 resource "aws_security_group" "alb" {
-  name_prefix = "alb-sg-"
+  name = "ec2-alb-sg"
   description = "Security group for ALB"
   vpc_id      = data.aws_vpc.default.id
 
@@ -91,7 +91,7 @@ resource "aws_security_group" "alb" {
 
 # EC2 Security Group
 resource "aws_security_group" "ec2" {
-  name_prefix = "ec2-sg-"
+  name = "ec2-app-sg"
   description = "Security group for EC2 instances"
   vpc_id      = data.aws_vpc.default.id
 
@@ -184,7 +184,7 @@ resource "aws_instance" "web2" {
 # ============================================
 
 resource "aws_lb" "main" {
-  name_prefix        = "alb-"
+  name               = "ecommerce-alb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
@@ -199,7 +199,7 @@ resource "aws_lb" "main" {
 
 # Target Group
 resource "aws_lb_target_group" "web" {
-  name_prefix = "tg-"
+  name        = "ecommerce-tg"
   port        = 80
   protocol    = "HTTP"
   vpc_id      = data.aws_vpc.default.id
@@ -287,7 +287,7 @@ resource "aws_iam_role_policy" "ec2_policy" {
 }
 
 resource "aws_iam_instance_profile" "ec2_profile" {
-  name_prefix = "ec2-app-profile-"
+  name = "ec2-app-profile"
   role = aws_iam_role.ec2_role.name
 }
 
