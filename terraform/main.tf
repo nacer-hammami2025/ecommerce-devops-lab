@@ -91,7 +91,7 @@ resource "aws_security_group" "alb" {
 
 # EC2 Security Group
 resource "aws_security_group" "ec2" {
-  name = "ec2-app-sg"
+  name = "ecommerce-ec2-sg"
   description = "Security group for EC2 instances"
   vpc_id      = data.aws_vpc.default.id
 
@@ -199,7 +199,7 @@ resource "aws_lb" "main" {
 
 # Target Group
 resource "aws_lb_target_group" "web" {
-  name        = "ecommerce-tg"
+  name        = "ecommerce-web-tg"
   port        = 80
   protocol    = "HTTP"
   vpc_id      = data.aws_vpc.default.id
@@ -249,7 +249,7 @@ resource "aws_lb_listener" "web" {
 # ============================================
 
 resource "aws_iam_role" "ec2_role" {
-  name = "ec2-app-role"
+  name = "ecommerce-app-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -287,7 +287,7 @@ resource "aws_iam_role_policy" "ec2_policy" {
 }
 
 resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "ec2-app-profile"
+  name = "ecommerce-app-profile"
   role = aws_iam_role.ec2_role.name
 }
 
