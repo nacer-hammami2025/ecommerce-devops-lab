@@ -249,7 +249,7 @@ resource "aws_lb_listener" "web" {
 # ============================================
 
 resource "aws_iam_role" "ec2_role" {
-  name_prefix = "ec2-app-role-"
+  name = "ec2-app-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
