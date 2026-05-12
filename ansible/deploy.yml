@@ -98,7 +98,7 @@
 
     - name: Verify services are running
       shell: |
-        docker ps --format '{{.Names}}'
+        docker ps -q
       register: running_containers
       retries: 5
       delay: 10
