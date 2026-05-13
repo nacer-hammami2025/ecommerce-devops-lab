@@ -39,8 +39,31 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
-      - name: Terraform Destroy (Clean Previous Run)
-        run: terraform destroy -auto-approve
+      - name: Clean Orphaned AWS Resources
+        run: |
+          # Delete ALB
+          ALB_ARN=$(aws elbv2 describe-load-balancers --query 'LoadBalancers[?LoadBalancerName==`ecommerce-alb`].LoadBalancerArn' --output text 2>/dev/null)
+          if [ ! -z "$ALB_ARN" ]; then aws elbv2 delete-load-balancer --load-balancer-arn "$ALB_ARN" 2>/dev/null || true; fi
+          
+          # Delete Target Group
+          sleep 5
+          TG_ARN=$(aws elbv2 describe-target-groups --query 'TargetGroups[?TargetGroupName==`ecommerce-tg`].TargetGroupArn' --output text 2>/dev/null)
+          if [ ! -z "$TG_ARN" ]; then aws elbv2 delete-target-group --target-group-arn "$TG_ARN" 2>/dev/null || true; fi
+          
+          # Delete Security Groups
+          for SG_ID in $(aws ec2 describe-security-groups --filters "Name=group-name,Values=ecommerce-alb-sg,ecommerce-ec2-sg" --query 'SecurityGroups[].GroupId' --output text 2>/dev/null); do
+            aws ec2 delete-security-group --group-id "$SG_ID" 2>/dev/null || true
+          done
+          
+          # Delete IAM resources
+          aws iam delete-instance-profile --instance-profile-name ecommerce-app-profile 2>/dev/null || true
+          aws iam delete-role-policy --role-name ecommerce-app-role --policy-name ec2-app-policy 2>/dev/null || true
+          aws iam delete-role --role-name ecommerce-app-role 2>/dev/null || true
+          
+          # Terminate running instances
+          for INSTANCE_ID in $(aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null); do
+            aws ec2 terminate-instances --instance-ids "$INSTANCE_ID" 2>/dev/null || true
+          done
         continue-on-error: true
 
       - name: Terraform Plan
