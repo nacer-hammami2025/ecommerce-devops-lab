@@ -21,7 +21,7 @@ services:
     working_dir: /app
     command: npm start
     volumes:
-      - ./app:/app
+      - ./app.js:/app/app.js
       - ./package.json:/app/package.json
     ports:
       - "3000:3000"
