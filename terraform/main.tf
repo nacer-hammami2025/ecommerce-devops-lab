@@ -59,7 +59,7 @@ data "aws_subnet" "default_az2" {
 
 # ALB Security Group
 resource "aws_security_group" "alb" {
-  name = "ecommerce-alb-sg"
+  name = "ecommerce-prod-alb-sg"
   description = "Security group for ALB"
   vpc_id      = data.aws_vpc.default.id
 
@@ -91,7 +91,7 @@ resource "aws_security_group" "alb" {
 
 # EC2 Security Group
 resource "aws_security_group" "ec2" {
-  name = "ecommerce-ec2-sg"
+  name = "ecommerce-prod-ec2-sg"
   description = "Security group for EC2 instances"
   vpc_id      = data.aws_vpc.default.id
 
@@ -184,7 +184,7 @@ resource "aws_instance" "web2" {
 # ============================================
 
 resource "aws_lb" "main" {
-  name               = "ecommerce-alb"
+  name               = "ecommerce-prod-alb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
@@ -193,13 +193,13 @@ resource "aws_lb" "main" {
   enable_deletion_protection = false
 
   tags = {
-    Name = "ecommerce-alb"
+    Name = "ecommerce-prod-alb"
   }
 }
 
 # Target Group
 resource "aws_lb_target_group" "web" {
-  name        = "ecommerce-tg"
+  name        = "ecommerce-prod-tg"
   port        = 80
   protocol    = "HTTP"
   vpc_id      = data.aws_vpc.default.id
@@ -249,7 +249,7 @@ resource "aws_lb_listener" "web" {
 # ============================================
 
 resource "aws_iam_role" "ec2_role" {
-  name = "ecommerce-app-role"
+  name = "ecommerce-prod-app-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -287,7 +287,7 @@ resource "aws_iam_role_policy" "ec2_policy" {
 }
 
 resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "ecommerce-app-profile"
+  name = "ecommerce-prod-app-profile"
   role = aws_iam_role.ec2_role.name
 }
 
