@@ -59,7 +59,7 @@ data "aws_subnet" "default_az2" {
 
 # ALB Security Group
 resource "aws_security_group" "alb" {
-  name = "ecommerce-prod-alb-sg"
+  name_prefix = "ecommerce-prod-alb-sg-"
   description = "Security group for ALB"
   vpc_id      = data.aws_vpc.default.id
 
@@ -91,7 +91,7 @@ resource "aws_security_group" "alb" {
 
 # EC2 Security Group
 resource "aws_security_group" "ec2" {
-  name = "ecommerce-prod-ec2-sg"
+  name_prefix = "ecommerce-prod-ec2-sg-"
   description = "Security group for EC2 instances"
   vpc_id      = data.aws_vpc.default.id
 
@@ -182,7 +182,7 @@ resource "aws_instance" "web2" {
 # ============================================
 
 resource "aws_lb" "main" {
-  name               = "ecommerce-prod-alb"
+  name_prefix        = "ecommerce-prod-alb-"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
@@ -197,7 +197,7 @@ resource "aws_lb" "main" {
 
 # Target Group
 resource "aws_lb_target_group" "web" {
-  name        = "ecommerce-prod-tg"
+  name_prefix = "ecommerce-prod-tg-"
   port        = 80
   protocol    = "HTTP"
   vpc_id      = data.aws_vpc.default.id
