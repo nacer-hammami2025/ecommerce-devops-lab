@@ -118,78 +118,138 @@ jobs:
       - name: Setup SSH Key
         run: |
           mkdir -p ~/.ssh
-          # Write SSH key carefully to avoid encoding issues
+          # Write SSH key very carefully
           cat > ~/.ssh/ec2_key.pem << 'EOF'
           ${{ secrets.EC2_KEY }}
           EOF
           chmod 600 ~/.ssh/ec2_key.pem
-          echo "✅ SSH Key Setup:"
-          ls -lah ~/.ssh/ec2_key.pem
-          head -3 ~/.ssh/ec2_key.pem
+          
+          echo "========================================"
+          echo "✅ SSH Key Configuration"
+          echo "========================================"
+          echo "Key file size: $(wc -c < ~/.ssh/ec2_key.pem) bytes"
+          echo "Key file permissions:"
+          ls -la ~/.ssh/ec2_key.pem
+          
+          echo ""
+          echo "Key header:"
+          head -1 ~/.ssh/ec2_key.pem
+          echo ""
+          echo "Key footer:"
+          tail -1 ~/.ssh/ec2_key.pem
+          
           # Validate key format
-          if grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/ec2_key.pem; then
-            echo "✅ Valid private key format detected"
+          if head -1 ~/.ssh/ec2_key.pem | grep -q "BEGIN.*PRIVATE KEY"; then
+            echo "✅ Valid private key format"
+            KEY_TYPE=$(head -1 ~/.ssh/ec2_key.pem)
+            echo "Key type: $KEY_TYPE"
           else
-            echo "❌ Invalid key format!"
-            cat ~/.ssh/ec2_key.pem | head -5
+            echo "❌ INVALID KEY FORMAT!"
+            echo "First 5 lines of key:"
+            head -5 ~/.ssh/ec2_key.pem
             exit 1
           fi
+          
+          # Try to generate public key from private key
+          echo ""
+          echo "Generating public key from private key..."
+          if ssh-keygen -y -f ~/.ssh/ec2_key.pem > ~/.ssh/ec2_key.pub 2>&1; then
+            echo "✅ Public key successfully generated"
+            wc -c < ~/.ssh/ec2_key.pub
+          else
+            echo "⚠️ Could not generate public key - key may be invalid"
+            cat ~/.ssh/ec2_key.pub
+          fi
+
+      - name: SSH Agent Setup
+        run: |
+          # Start SSH agent and add key
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/ec2_key.pem
+          echo "✅ SSH agent initialized with key"
+          ssh-add -l
 
       - name: Wait for SSH Readiness
         run: |
-          # Add SSH debugging
-          eval $(ssh-agent -s)
-          ssh-add ~/.ssh/ec2_key.pem
-          ssh-keyscan -H github.com >> ~/.ssh/known_hosts 2>/dev/null || true
+          echo "========================================"
+          echo "🔐 SSH Connectivity Test"
+          echo "========================================"
           
           for ip in $(echo "${{ needs.terraform.outputs.instance_ips }}" | tr ',' ' '); do
-            if [ ! -z "$ip" ]; then
-              echo "========================================"
-              echo "🔗 Attempting SSH connection to $ip"
-              echo "========================================"
+            if [ -z "$ip" ]; then
+              echo "⚠️ Skipping empty IP"
+              continue
+            fi
+            
+            echo ""
+            echo "═══════════════════════════════════════════"
+            echo "Target: ubuntu@$ip"
+            echo "═══════════════════════════════════════════"
+            
+            # Pre-flight checks
+            echo "📋 Pre-flight checks:"
+            echo "  - Key exists: $([ -f ~/.ssh/ec2_key.pem ] && echo YES || echo NO)"
+            echo "  - Key readable: $([ -r ~/.ssh/ec2_key.pem ] && echo YES || echo NO)"
+            echo "  - Key permissions: $(stat -c %a ~/.ssh/ec2_key.pem 2>/dev/null || stat -f %A ~/.ssh/ec2_key.pem)"
+            
+            # SSH connectivity loop
+            SSH_SUCCESS=0
+            for attempt in {1..25}; do
+              echo ""
+              echo "[Attempt $attempt/25] Connecting to ubuntu@$ip"
               
-              for i in {1..30}; do
-                echo "[Attempt $i/30] Testing SSH on $ip..."
-                
-                # Test SSH with verbose output on first few attempts
-                if [ $i -le 3 ]; then
-                  ssh -vvv -i ~/.ssh/ec2_key.pem \
-                    -o StrictHostKeyChecking=no \
-                    -o UserKnownHostsFile=/dev/null \
-                    -o ConnectTimeout=5 \
-                    -o BatchMode=yes \
-                    ubuntu@$ip "echo SSH is ready" 2>&1 | head -20
-                else
-                  ssh -i ~/.ssh/ec2_key.pem \
-                    -o StrictHostKeyChecking=no \
-                    -o UserKnownHostsFile=/dev/null \
-                    -o ConnectTimeout=5 \
-                    -o BatchMode=yes \
-                    ubuntu@$ip "echo SSH is ready" 2>&1
+              # Verbose output on first 3 attempts
+              if [ $attempt -le 3 ]; then
+                echo "🔍 Detailed SSH output:"
+                ssh -vvv -i ~/.ssh/ec2_key.pem \
+                  -o StrictHostKeyChecking=no \
+                  -o UserKnownHostsFile=/dev/null \
+                  -o ConnectTimeout=10 \
+                  -o BatchMode=yes \
+                  -o PubkeyAuthentication=yes \
+                  ubuntu@$ip "echo 'SSH CONNECTION SUCCESS' && uname -a" 2>&1 | tee /tmp/ssh_verbose.log
+              else
+                ssh -i ~/.ssh/ec2_key.pem \
+                  -o StrictHostKeyChecking=no \
+                  -o UserKnownHostsFile=/dev/null \
+                  -o ConnectTimeout=10 \
+                  -o BatchMode=yes \
+                  -o PubkeyAuthentication=yes \
+                  ubuntu@$ip "echo 'SSH CONNECTION SUCCESS'" 2>&1
+              fi
+              
+              if [ $? -eq 0 ]; then
+                echo "✅ SSH SUCCESSFUL on ubuntu@$ip"
+                SSH_SUCCESS=1
+                break
+              else
+                echo "❌ SSH failed (attempt $attempt/25)"
+                if [ $attempt -eq 3 ]; then
+                  echo "📊 Diagnostic info from verbose attempt:"
+                  grep -i "auth\|permission\|denied\|key" /tmp/ssh_verbose.log || echo "No diagnostic info found"
                 fi
-                
-                if [ $? -eq 0 ]; then
-                  echo "✅ SSH ready on $ip"
-                  break
-                fi
-                
-                if [ $i -eq 30 ]; then
-                  echo "❌ SSH failed after 30 attempts on $ip"
-                  echo "Trying alternative method: aws ec2-instance-connect..."
-                  aws ec2-instance-connect send-ssh-public-key \
-                    --instance-id $(aws ec2 describe-instances --filters "Name=private-ip-address,Values=$ip" --query 'Reservations[0].Instances[0].InstanceId' --output text) \
-                    --instance-os-user ubuntu \
-                    --ssh-public-key file://~/.ssh/ec2_key.pub \
-                    --availability-zone us-east-1a 2>/dev/null || true
-                  echo "⚠️ Continuing anyway..."
-                  break
-                fi
-                
-                echo "Waiting 10 seconds before retry..."
-                sleep 10
-              done
+              fi
+              
+              if [ $attempt -lt 25 ]; then
+                WAIT_TIME=$((10 + attempt))
+                echo "⏳ Waiting $WAIT_TIME seconds before retry..."
+                sleep $WAIT_TIME
+              fi
+            done
+            
+            if [ $SSH_SUCCESS -eq 0 ]; then
+              echo ""
+              echo "⚠️ SSH CONNECTION FAILED FOR $ip after 25 attempts"
+              echo "Possible causes:"
+              echo "  1. Wrong SSH key (EC2_KEY secret may not match instance key pair)"
+              echo "  2. Security group not allowing port 22"
+              echo "  3. Instance still initializing"
+              echo ""
+              exit 1
             fi
           done
+          echo ""
+          echo "✅ All instances are SSH-reachable"
 
       - name: Generate Inventory
         run: |
@@ -197,25 +257,63 @@ jobs:
           echo "" >> inventory.ini
           for ip in $(echo "${{ needs.terraform.outputs.instance_ips }}" | tr ',' ' '); do
             if [ ! -z "$ip" ]; then
-              echo "$ip ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/ec2_key.pem ansible_python_interpreter=/usr/bin/python3" >> inventory.ini
+              echo "$ip ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/ec2_key.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' ansible_python_interpreter=/usr/bin/python3" >> inventory.ini
             fi
           done
           echo "" >> inventory.ini
           echo "[all:vars]" >> inventory.ini
           echo "ansible_host_key_checking=False" >> inventory.ini
+          echo "ansible_ssh_retries=5" >> inventory.ini
+          echo "ansible_ssh_timeout=30" >> inventory.ini
+          echo "" >> inventory.ini
+          echo "✅ Generated Inventory:"
           cat inventory.ini
 
       - name: Run Ansible Playbook - Deploy
         run: |
-          echo "📋 Inventory file:"
+          echo "========================================"
+          echo "💭 Ansible Playbook Execution"
+          echo "========================================"
+          echo ""
+          echo "📋 Inventory:"
           cat inventory.ini
           echo ""
+          echo "🔐 Testing Ansible connectivity..."
+          ansible all -i inventory.ini -m ping -vvv 2>&1 | tee /tmp/ansible_ping.log
+          
+          PING_RESULT=$?
+          if [ $PING_RESULT -ne 0 ]; then
+            echo ""
+            echo "⚠️ Ansible ping test FAILED"
+            echo "Diagnostic output:"
+            grep -i "error\|failed\|refused\|permission\|denied" /tmp/ansible_ping.log || echo "No specific errors found"
+            echo ""
+            echo "Continuing with playbook execution anyway..."
+          else
+            echo "✅ Ansible ping successful - instances are reachable"
+          fi
+          
+          echo ""
           echo "🚀 Running Ansible Playbook..."
-          ansible-playbook -i inventory.ini ansible/deploy.yml -vvv 2>&1 | tee ansible_output.log
+          ansible-playbook -i inventory.ini ansible/deploy.yml -vvv 2>&1 | tee /tmp/ansible_playbook.log
+          
+          PLAYBOOK_RESULT=$?
+          if [ $PLAYBOOK_RESULT -eq 0 ]; then
+            echo "✅ Ansible playbook completed successfully"
+          else
+            echo "❌ Ansible playbook FAILED with exit code $PLAYBOOK_RESULT"
+            echo ""
+            echo "Last 50 lines of playbook output:"
+            tail -50 /tmp/ansible_playbook.log
+            exit $PLAYBOOK_RESULT
+          fi
         env:
           ANSIBLE_HOST_KEY_CHECKING: "False"
-          ANSIBLE_SSH_RETRIES: "3"
+          ANSIBLE_SSH_RETRIES: "5"
+          ANSIBLE_SSH_TIMEOUT: "30"
+          ANSIBLE_GATHER_TIMEOUT: "30"
           ANSIBLE_STDOUT_CALLBACK: "actionable"
+          ANSIBLE_DEPRECATION_WARNINGS: "False"
 
       - name: Verify Deployment
         run: |

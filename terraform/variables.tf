@@ -43,5 +43,5 @@ variable "instance_type" {
 variable "key_pair_name" {
   description = "EC2 Key Pair name"
   type        = string
-  default     = "vockey"
+  default     = "labuser"
 }
