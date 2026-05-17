@@ -118,21 +118,74 @@ jobs:
       - name: Setup SSH Key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_KEY }}" > ~/.ssh/ec2_key.pem
+          # Write SSH key carefully to avoid encoding issues
+          cat > ~/.ssh/ec2_key.pem << 'EOF'
+          ${{ secrets.EC2_KEY }}
+          EOF
           chmod 600 ~/.ssh/ec2_key.pem
-          ls -la ~/.ssh/
+          echo "✅ SSH Key Setup:"
+          ls -lah ~/.ssh/ec2_key.pem
+          head -3 ~/.ssh/ec2_key.pem
+          # Validate key format
+          if grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/ec2_key.pem; then
+            echo "✅ Valid private key format detected"
+          else
+            echo "❌ Invalid key format!"
+            cat ~/.ssh/ec2_key.pem | head -5
+            exit 1
+          fi
 
       - name: Wait for SSH Readiness
         run: |
+          # Add SSH debugging
+          eval $(ssh-agent -s)
+          ssh-add ~/.ssh/ec2_key.pem
+          ssh-keyscan -H github.com >> ~/.ssh/known_hosts 2>/dev/null || true
+          
           for ip in $(echo "${{ needs.terraform.outputs.instance_ips }}" | tr ',' ' '); do
             if [ ! -z "$ip" ]; then
-              echo "Waiting for SSH on $ip..."
+              echo "========================================"
+              echo "🔗 Attempting SSH connection to $ip"
+              echo "========================================"
+              
               for i in {1..30}; do
-                if ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 ubuntu@$ip "echo SSH is ready" 2>/dev/null; then
-                  echo "SSH ready on $ip"
+                echo "[Attempt $i/30] Testing SSH on $ip..."
+                
+                # Test SSH with verbose output on first few attempts
+                if [ $i -le 3 ]; then
+                  ssh -vvv -i ~/.ssh/ec2_key.pem \
+                    -o StrictHostKeyChecking=no \
+                    -o UserKnownHostsFile=/dev/null \
+                    -o ConnectTimeout=5 \
+                    -o BatchMode=yes \
+                    ubuntu@$ip "echo SSH is ready" 2>&1 | head -20
+                else
+                  ssh -i ~/.ssh/ec2_key.pem \
+                    -o StrictHostKeyChecking=no \
+                    -o UserKnownHostsFile=/dev/null \
+                    -o ConnectTimeout=5 \
+                    -o BatchMode=yes \
+                    ubuntu@$ip "echo SSH is ready" 2>&1
+                fi
+                
+                if [ $? -eq 0 ]; then
+                  echo "✅ SSH ready on $ip"
                   break
                 fi
-                echo "Attempt $i/30 - SSH not yet ready, waiting 10 seconds..."
+                
+                if [ $i -eq 30 ]; then
+                  echo "❌ SSH failed after 30 attempts on $ip"
+                  echo "Trying alternative method: aws ec2-instance-connect..."
+                  aws ec2-instance-connect send-ssh-public-key \
+                    --instance-id $(aws ec2 describe-instances --filters "Name=private-ip-address,Values=$ip" --query 'Reservations[0].Instances[0].InstanceId' --output text) \
+                    --instance-os-user ubuntu \
+                    --ssh-public-key file://~/.ssh/ec2_key.pub \
+                    --availability-zone us-east-1a 2>/dev/null || true
+                  echo "⚠️ Continuing anyway..."
+                  break
+                fi
+                
+                echo "Waiting 10 seconds before retry..."
                 sleep 10
               done
             fi
@@ -154,9 +207,15 @@ jobs:
 
       - name: Run Ansible Playbook - Deploy
         run: |
-          ansible-playbook -i inventory.ini ansible/deploy.yml -v
+          echo "📋 Inventory file:"
+          cat inventory.ini
+          echo ""
+          echo "🚀 Running Ansible Playbook..."
+          ansible-playbook -i inventory.ini ansible/deploy.yml -vvv 2>&1 | tee ansible_output.log
         env:
           ANSIBLE_HOST_KEY_CHECKING: "False"
+          ANSIBLE_SSH_RETRIES: "3"
+          ANSIBLE_STDOUT_CALLBACK: "actionable"
 
       - name: Verify Deployment
         run: |
