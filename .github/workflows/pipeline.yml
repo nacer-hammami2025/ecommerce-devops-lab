@@ -29,6 +29,28 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
 
+      - name: Ensure EC2 Key Pair Exists
+        run: |
+          mkdir -p ~/.ssh
+          cat > ~/.ssh/ec2_key.pem << 'EOF'
+          ${{ secrets.EC2_KEY }}
+          EOF
+          chmod 600 ~/.ssh/ec2_key.pem
+
+          KEY_NAME="labuser"
+
+          echo "Checking whether key pair ${KEY_NAME} exists in AWS..."
+          if aws ec2 describe-key-pairs --key-names "$KEY_NAME" >/dev/null 2>&1; then
+            echo "✅ Key pair ${KEY_NAME} already exists"
+          else
+            echo "🔑 Key pair ${KEY_NAME} not found, importing public key from EC2_KEY secret"
+            ssh-keygen -y -f ~/.ssh/ec2_key.pem > ~/.ssh/ec2_key.pub
+            aws ec2 import-key-pair \
+              --key-name "$KEY_NAME" \
+              --public-key-material fileb://$HOME/.ssh/ec2_key.pub
+            echo "✅ Imported key pair ${KEY_NAME}"
+          fi
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
