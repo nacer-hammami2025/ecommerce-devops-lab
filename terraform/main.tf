@@ -182,7 +182,8 @@ resource "aws_instance" "web2" {
 # ============================================
 
 resource "aws_lb" "main" {
-  name_prefix        = "ecommerce-prod-alb-"
+  # AWS requires short name_prefix (max 6 chars). Use compact prefix to avoid errors.
+  name_prefix        = "ecalb-"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
@@ -197,7 +198,8 @@ resource "aws_lb" "main" {
 
 # Target Group
 resource "aws_lb_target_group" "web" {
-  name_prefix = "ecommerce-prod-tg-"
+  # short prefix (<=6 chars) to satisfy provider validation
+  name_prefix = "ectg-"
   port        = 80
   protocol    = "HTTP"
   vpc_id      = data.aws_vpc.default.id
