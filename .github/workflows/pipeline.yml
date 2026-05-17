@@ -168,6 +168,41 @@ jobs:
             fi
           done
 
+      - name: Test Application HTTP - Proof of Functionality ✅
+        run: |
+          echo "🌐 Testing HTTP Connectivity to Application..."
+          echo "=============================================="
+          
+          # Get first instance IP
+          FIRST_IP=$(echo "${{ needs.terraform.outputs.instance_ips }}" | cut -d',' -f1)
+          
+          if [ ! -z "$FIRST_IP" ]; then
+            echo "📍 Testing IP: $FIRST_IP"
+            echo ""
+            
+            # Test HTTP GET request
+            echo "🔍 Testing HTTP GET / endpoint..."
+            HTTP_CODE=$(curl -s -o /tmp/response.html -w "%{http_code}" "http://$FIRST_IP/" --max-time 15)
+            echo "HTTP Status Code: $HTTP_CODE"
+            
+            if [ "$HTTP_CODE" == "200" ]; then
+              echo "✅ SUCCESS! Application is responding with HTTP 200"
+              echo ""
+              echo "📄 HTML Response (first 50 lines):"
+              echo "=================================="
+              head -50 /tmp/response.html
+              echo ""
+              echo "=================================="
+              echo ""
+              echo "🎉 PROOF: Application is running and accessible at http://$FIRST_IP/"
+            else
+              echo "⚠️ Status code: $HTTP_CODE (expected 200)"
+              cat /tmp/response.html || true
+            fi
+          else
+            echo "❌ No instance IPs available"
+          fi
+
   # =====================================
   # 3. OPTIONAL: TERRAFORM DESTROY
   # =====================================

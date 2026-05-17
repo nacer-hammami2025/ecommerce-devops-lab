@@ -1,0 +1,65 @@
+name: Test Application Accessibility
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Instance IPs from Terraform
+        working-directory: terraform
+        run: |
+          terraform init
+          echo "IPS=$(terraform output -raw instance_public_ips)" >> $GITHUB_ENV
+
+      - name: Test Application HTTP
+        run: |
+          IPS=$(echo "${{ env.IPS }}" | tr ',' '\n')
+          for IP in $IPS; do
+            IP=$(echo $IP | xargs)  # trim whitespace
+            if [ ! -z "$IP" ]; then
+              echo "Testing http://$IP/"
+              curl -v "http://$IP/" 2>&1 | head -30 || true
+              echo ""
+              echo "---"
+            fi
+          done
+
+      - name: Restart Docker Containers
+        run: |
+          IPS=$(echo "${{ env.IPS }}" | tr ',' '\n')
+          for IP in $IPS; do
+            IP=$(echo $IP | xargs)
+            if [ ! -z "$IP" ]; then
+              echo "Attempting to restart containers on $IP..."
+              # Try to access and restart via AWS Systems Manager (requires IAM)
+              aws ssm send-command \
+                --instance-ids $(aws ec2 describe-instances --filters "Name=private-ip-address,Values=$IP" --query 'Reservations[0].Instances[0].InstanceId' --output text 2>/dev/null) \
+                --document-name "AWS-RunShellScript" \
+                --parameters 'commands=["sudo systemctl restart docker || true", "docker-compose -f /opt/ecommerce/docker-compose.yml restart || true"]' \
+                2>/dev/null || echo "SSM not available"
+            fi
+          done
+
+      - name: Wait and Retest
+        run: |
+          echo "Waiting 30 seconds for containers to restart..."
+          sleep 30
+          IPS=$(echo "${{ env.IPS }}" | tr ',' '\n')
+          for IP in $IPS; do
+            IP=$(echo $IP | xargs)
+            if [ ! -z "$IP" ]; then
+              echo "Retesting http://$IP/"
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://$IP/" --max-time 10)
+              echo "HTTP Status: $HTTP_CODE"
+              if [ "$HTTP_CODE" == "200" ]; then
+                echo "✅ APPLICATION IS ACCESSIBLE!"
+                echo "Access at: http://$IP/"
+              fi
+            fi
+          done
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1

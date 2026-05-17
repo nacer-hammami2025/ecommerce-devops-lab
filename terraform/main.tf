@@ -150,7 +150,6 @@ resource "aws_instance" "web1" {
   subnet_id              = data.aws_subnet.default_az1.id
   associate_public_ip_address = true
   vpc_security_group_ids = [aws_security_group.ec2.id]
-  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
 
   user_data = file("${path.module}/user_data.sh")
 
@@ -168,7 +167,6 @@ resource "aws_instance" "web2" {
   subnet_id              = data.aws_subnet.default_az2.id
   associate_public_ip_address = true
   vpc_security_group_ids = [aws_security_group.ec2.id]
-  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
 
   user_data = file("${path.module}/user_data.sh")
 
@@ -246,51 +244,10 @@ resource "aws_lb_listener" "web" {
 
 # ============================================
 # IAM ROLE FOR EC2
+# ================ (Disabled for AWS Academy)
 # ============================================
-
-resource "aws_iam_role" "ec2_role" {
-  name = "ecommerce-prod-app-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy" "ec2_policy" {
-  name = "ec2-app-policy"
-  role = aws_iam_role.ec2_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-          "logs:DescribeLogStreams"
-        ]
-        Resource = "arn:aws:logs:*:*:*"
-      }
-    ]
-  })
-}
-
-resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "ecommerce-prod-app-profile"
-  role = aws_iam_role.ec2_role.name
-}
-
+# AWS Academy learner labs have restricted IAM permissions
+# Role creation is handled outside this Terraform configuration
 # ============================================
 # DATA SOURCES
 # ============================================
