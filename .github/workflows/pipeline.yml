@@ -17,6 +17,7 @@ jobs:
         working-directory: terraform
     outputs:
       instance_ips: ${{ steps.export.outputs.instance_ips }}
+      alb_dns: ${{ steps.export.outputs.alb_dns }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -120,6 +121,9 @@ jobs:
           IPS=$(terraform output -json instance_public_ips | jq -r '.[]' | tr '\n' ',' )
           echo "instance_ips=$IPS" >> $GITHUB_OUTPUT
           echo "Exported IPs: $IPS"
+          ALB_DNS=$(terraform output -raw alb_dns_name)
+          echo "alb_dns=$ALB_DNS" >> $GITHUB_OUTPUT
+          echo "Exported ALB DNS: $ALB_DNS"
 
   # =====================================
   # 2. ANSIBLE CONFIGURATION
@@ -351,7 +355,42 @@ jobs:
         run: |
           echo "🌐 Testing HTTP Connectivity to Application..."
           echo "=============================================="
-          
+
+          TARGET_URL=""
+          if [ -n "${{ needs.terraform.outputs.alb_dns }}" ]; then
+            TARGET_URL="http://${{ needs.terraform.outputs.alb_dns }}/"
+            echo "Using ALB URL: $TARGET_URL"
+          fi
+
+          if [ -n "$TARGET_URL" ]; then
+            echo "🔍 Testing HTTP GET / via ALB..."
+            SUCCESS=0
+            for attempt in 1 2 3 4 5; do
+              echo "  Attempt $attempt/5"
+              HTTP_CODE=$(curl -s -o /tmp/response.html -w "%{http_code}" "$TARGET_URL" --max-time 20 || true)
+              echo "  HTTP Status Code: $HTTP_CODE"
+              if [ "$HTTP_CODE" = "200" ]; then
+                SUCCESS=1
+                break
+              fi
+              sleep 10
+            done
+
+            if [ "$SUCCESS" = "1" ]; then
+              echo "✅ SUCCESS! Application is responding with HTTP 200 via ALB"
+              echo ""
+              echo "📄 HTML Response (first 20 lines):"
+              echo "=================================="
+              head -20 /tmp/response.html
+              echo ""
+              echo "=================================="
+              echo ""
+              echo "🎉 PROOF: Application is running and accessible at $TARGET_URL"
+              exit 0
+            fi
+          fi
+
+          echo "⚠️ ALB check did not succeed or ALB DNS missing. Falling back to instance IPs."
           ALL_OK=1
           for IP in $(echo "${{ needs.terraform.outputs.instance_ips }}" | tr ',' ' '); do
             if [ -z "$IP" ]; then
