@@ -52,6 +52,17 @@
         state: directory
         mode: '0755'
 
+    - name: Remove stale nginx.conf path if it is a directory
+      file:
+        path: "{{ app_directory }}/nginx.conf"
+        state: absent
+
+    - name: Ensure static html directory exists
+      file:
+        path: "{{ app_directory }}/html"
+        state: directory
+        mode: '0755'
+
     - name: Copy application files
       copy:
         src: "{{ playbook_dir }}/../app/app.js"
@@ -68,6 +79,24 @@
       template:
         src: "{{ playbook_dir }}/templates/nginx.conf.j2"
         dest: "{{ app_directory }}/nginx.conf"
+        mode: '0644'
+
+    - name: Create default HTML page
+      copy:
+        content: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>E-Commerce Store</title>
+          </head>
+          <body>
+              <h1>E-Commerce Store is ready</h1>
+              <p>The application is served through Nginx and Node.js.</p>
+          </body>
+          </html>
+        dest: "{{ app_directory }}/html/index.html"
         mode: '0644'
 
     - name: Create Node.js app package.json

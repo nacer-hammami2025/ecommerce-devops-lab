@@ -334,7 +334,6 @@ jobs:
           ANSIBLE_SSH_RETRIES: "5"
           ANSIBLE_SSH_TIMEOUT: "30"
           ANSIBLE_GATHER_TIMEOUT: "30"
-          ANSIBLE_STDOUT_CALLBACK: "actionable"
           ANSIBLE_DEPRECATION_WARNINGS: "False"
 
       - name: Verify Deployment
@@ -353,34 +352,48 @@ jobs:
           echo "🌐 Testing HTTP Connectivity to Application..."
           echo "=============================================="
           
-          # Get first instance IP
-          FIRST_IP=$(echo "${{ needs.terraform.outputs.instance_ips }}" | cut -d',' -f1)
-          
-          if [ ! -z "$FIRST_IP" ]; then
-            echo "📍 Testing IP: $FIRST_IP"
+          ALL_OK=1
+          for IP in $(echo "${{ needs.terraform.outputs.instance_ips }}" | tr ',' ' '); do
+            if [ -z "$IP" ]; then
+              continue
+            fi
+
+            echo "📍 Testing IP: $IP"
             echo ""
             
-            # Test HTTP GET request
             echo "🔍 Testing HTTP GET / endpoint..."
-            HTTP_CODE=$(curl -s -o /tmp/response.html -w "%{http_code}" "http://$FIRST_IP/" --max-time 15)
-            echo "HTTP Status Code: $HTTP_CODE"
-            
-            if [ "$HTTP_CODE" == "200" ]; then
-              echo "✅ SUCCESS! Application is responding with HTTP 200"
+            SUCCESS=0
+            for attempt in 1 2 3 4 5; do
+              echo "  Attempt $attempt/5"
+              HTTP_CODE=$(curl -s -o /tmp/response.html -w "%{http_code}" "http://$IP/" --max-time 20 || true)
+              echo "  HTTP Status Code: $HTTP_CODE"
+              if [ "$HTTP_CODE" = "200" ]; then
+                SUCCESS=1
+                break
+              fi
+              sleep 10
+            done
+
+            if [ "$SUCCESS" = "1" ]; then
+              echo "✅ SUCCESS! Application is responding with HTTP 200 on $IP"
               echo ""
-              echo "📄 HTML Response (first 50 lines):"
+              echo "📄 HTML Response (first 20 lines):"
               echo "=================================="
-              head -50 /tmp/response.html
+              head -20 /tmp/response.html
               echo ""
               echo "=================================="
               echo ""
-              echo "🎉 PROOF: Application is running and accessible at http://$FIRST_IP/"
+              echo "🎉 PROOF: Application is running and accessible at http://$IP/"
             else
-              echo "⚠️ Status code: $HTTP_CODE (expected 200)"
+              echo "⚠️ IP $IP never returned HTTP 200"
               cat /tmp/response.html || true
+              ALL_OK=0
             fi
-          else
-            echo "❌ No instance IPs available"
+          done
+
+          if [ "$ALL_OK" != "1" ]; then
+            echo "❌ One or more instances did not pass the HTTP check"
+            exit 1
           fi
 
   # =====================================
